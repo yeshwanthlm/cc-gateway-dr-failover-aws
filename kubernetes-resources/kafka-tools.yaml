@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kafka-tools
+  namespace: confluent
+spec:
+  restartPolicy: Never
+  securityContext:
+    # Ensures the container user can read files from the Secret volume
+    fsGroup: 1000
+  containers:
+    - name: tools
+      image: confluentinc/cp-kafka:8.1.0
+      command: ["bash", "-lc"]
+      args:
+        - sleep infinity
+      volumeMounts:
+        - name: gateway-truststore
+          mountPath: /etc/kafka/tls
+          readOnly: true
+        - name: client-primary
+          mountPath: /etc/kafka/client-primary
+          readOnly: true
+        - name: client-dr
+          mountPath: /etc/kafka/client-dr
+          readOnly: true
+  volumes:
+    - name: gateway-truststore
+      secret:
+        secretName: gateway-truststore
+        defaultMode: 0400
+    - name: client-primary
+      secret:
+        secretName: client-primary
+        defaultMode: 0400
+    - name: client-dr
+      secret:
+        secretName: client-dr
+        defaultMode: 0400

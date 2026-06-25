@@ -1,0 +1,10 @@
+# AWS EKS Cluster Configuration
+# Copy this file to terraform.tfvars and customize as needed
+# Or use the deploy.sh script which will auto-generate this from .env
+
+aws_region              = "us-east-2"
+cluster_name            = "cc-gateway-eks"
+kubernetes_version      = "1.31"
+instance_type           = "t3.large"
+dns_zone_name           = "axa.com"
+gateway_dns_record_name = "kafka.cc"

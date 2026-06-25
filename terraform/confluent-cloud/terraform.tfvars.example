@@ -1,0 +1,16 @@
+# Copy this file to terraform.tfvars and fill in your Confluent Cloud credentials
+
+# Get these from https://confluent.cloud/settings/api-keys
+confluent_cloud_api_key    = "YOUR_CONFLUENT_CLOUD_API_KEY"
+confluent_cloud_api_secret = "YOUR_CONFLUENT_CLOUD_API_SECRET"
+
+# Optional: Customize cluster names, regions, and environment
+environment_name       = "cc-gateway-demo-aws"
+primary_cluster_name   = "aws-useast1-primary"
+primary_cluster_region = "us-east-1"
+dr_cluster_name        = "aws-uswest2-dr"
+dr_cluster_region      = "us-west-2"
+
+# Availability zone configuration
+# Options: SINGLE_ZONE (cheaper) or MULTI_ZONE (higher availability)
+availability = "SINGLE_ZONE"

@@ -1,0 +1,17 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+tfplan
+*.tfvars
+!*.tfvars.example
+
+# Certificates / secrets
+certs/ssl/
+gateway-tls-cert/
+
+# Client generated files
+clients/
+
+# OS
+.DS_Store

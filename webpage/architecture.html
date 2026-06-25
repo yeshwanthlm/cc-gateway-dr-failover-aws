@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Confluent Cloud Gateway Switchover — Interactive Architecture</title>
+<style>
+  :root{
+    --bg:#0a0e17; --bg2:#0f1626; --panel:#131c2e; --line:#243049;
+    --txt:#dce6f5; --muted:#8a9bb8; --accent:#22d3ee; --primary:#3b82f6;
+    --dr:#a855f7; --green:#34d399; --amber:#fbbf24; --red:#f87171;
+    --shadow:0 10px 40px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;scroll-behavior:smooth}
+  body{
+    background:radial-gradient(1200px 700px at 70% -10%, #15233f 0%, var(--bg) 55%) fixed;
+    color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;-webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent)}
+  .wrap{max-width:1280px;margin:0 auto;padding:0 20px}
+  header.top{padding:30px 28px 18px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(34,211,238,.06), transparent);}
+  header.top h1{margin:0;font-size:26px;font-weight:800;letter-spacing:.2px;
+    background:linear-gradient(90deg,#22d3ee,#3b82f6 40%,#a855f7);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    background-size:200% auto; animation:shine 6s linear infinite;}
+  @keyframes shine{to{background-position:200% center}}
+  header.top p{margin:8px 0 0;color:var(--muted);max-width:920px;font-size:14.5px}
+
+  /* Controls */
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0 6px}
+  .seg{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{background:transparent;border:0;color:var(--muted);padding:9px 16px;font-size:13.5px;font-weight:600;cursor:pointer;transition:.2s}
+  .seg button.active{color:#fff}
+  .seg button.normal.active{background:linear-gradient(135deg,#1d4ed8,#3b82f6)}
+  .seg button.failover.active{background:linear-gradient(135deg,#7e22ce,#a855f7)}
+  .btn{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:9px 14px;border-radius:10px;font-size:13.5px;font-weight:600;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;gap:7px}
+  .btn:hover{border-color:var(--accent);color:#fff}
+  .hint{color:var(--muted);font-size:12.5px;margin-left:6px}
+  .badge{font-size:11px;padding:3px 9px;border-radius:999px;font-weight:700;letter-spacing:.3px}
+  .badge.live{background:rgba(52,211,153,.15);color:var(--green);border:1px solid rgba(52,211,153,.35)}
+  .badge.fail{background:rgba(168,85,247,.15);color:#d8b4fe;border:1px solid rgba(168,85,247,.4)}
+
+  .canvas-card{background:linear-gradient(180deg,var(--bg2),#0b1220);border:1px solid var(--line);border-radius:16px;padding:6px;box-shadow:var(--shadow);position:relative;overflow:hidden;margin-top:12px}
+  svg.diagram{width:100%;height:auto;display:block}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin:14px 2px 0;font-size:12.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .ln{width:22px;height:0;border-top:3px solid;display:inline-block}
+
+  section.block{margin:46px 0}
+  section.block h2.title{font-size:22px;margin:0 0 6px}
+  section.block p.lead{color:var(--muted);margin:0 0 22px;max-width:900px}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;cursor:pointer;transition:.18s;position:relative;overflow:hidden}
+  .card:hover{transform:translateY(-4px);border-color:var(--accent);box-shadow:0 14px 30px rgba(34,211,238,.12)}
+  .card .ic{font-size:26px;margin-bottom:8px}
+  .card h3{margin:0 0 6px;font-size:15.5px}
+  .card p{margin:0;font-size:12.8px;color:var(--muted)}
+  .card .tag{position:absolute;top:14px;right:14px;font-size:10px;font-weight:700;color:var(--muted);transition:.2s}
+  .card:hover .tag{color:var(--accent);transform:translateX(3px)}
+
+  /* flow row */
+  .flowsteps{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:18px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 14px;position:relative}
+  .step .n{position:absolute;top:-10px;left:14px;background:var(--accent);color:#062029;font-weight:800;font-size:12px;border-radius:50%;width:24px;height:24px;display:grid;place-items:center}
+  .step h4{margin:8px 0 4px;font-size:13.5px}
+  .step p{margin:0;font-size:11.8px;color:var(--muted)}
+
+  /* Deployment timeline */
+  .deploy{position:relative;margin-top:10px;padding-left:8px}
+  .dline{position:absolute;left:30px;top:18px;bottom:18px;width:3px;background:var(--line);border-radius:3px;overflow:hidden}
+  .dline .fill{position:absolute;left:0;top:0;width:100%;height:0;background:linear-gradient(180deg,#22d3ee,#3b82f6,#a855f7);transition:height .6s ease}
+  .dstep{position:relative;display:flex;gap:18px;padding:12px 0;align-items:flex-start}
+  .dstep .num{flex:0 0 46px;width:46px;height:46px;border-radius:50%;background:var(--panel);border:2px solid var(--line);display:grid;place-items:center;font-weight:800;font-size:16px;color:var(--muted);z-index:2;transition:.35s}
+  .dstep.on .num{border-color:var(--accent);color:#fff;background:linear-gradient(135deg,#0e2433,#15324a);box-shadow:0 0 0 6px rgba(34,211,238,.12)}
+  .dstep .dbody{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;flex:1;transition:.35s}
+  .dstep.on .dbody{border-color:var(--accent);transform:translateX(4px)}
+  .dstep h4{margin:0 0 4px;font-size:15px}
+  .dstep p{margin:0 0 8px;font-size:13px;color:var(--muted)}
+  .dstep .cmd{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;background:#070c16;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:#9fe7ff;display:block;white-space:pre-wrap;overflow:auto}
+  .dstep .time{font-size:11px;color:#6b7a94;margin-top:6px;display:inline-block}
+
+  /* reveal animation */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1;transform:none}
+  .reveal.d1{transition-delay:.05s}.reveal.d2{transition-delay:.12s}.reveal.d3{transition-delay:.19s}
+  .reveal.d4{transition-delay:.26s}.reveal.d5{transition-delay:.33s}.reveal.d6{transition-delay:.4s}
+
+  /* ===== Message journey player ===== */
+  .journey-card{background:linear-gradient(180deg,var(--bg2),#0b1220);border:1px solid var(--line);border-radius:16px;padding:16px 16px 10px;box-shadow:var(--shadow);margin-top:6px}
+  .jctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+  .jbtn{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:8px 14px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;transition:.18s}
+  .jbtn:hover{border-color:var(--accent);color:#fff}
+  .jbtn.primary{background:linear-gradient(135deg,#0e7490,#22d3ee);color:#04181f;border-color:transparent}
+  .jstepcount{font-size:12.5px;color:var(--muted);margin-left:auto;font-weight:700}
+  svg.journey{width:100%;height:auto;display:block;margin:2px 0}
+  .jstop .jbox{transition:.3s}
+  .jstop .halo{opacity:0;transition:opacity .3s}
+  .jstop.active .halo{opacity:1}
+  .jstop.active .jbox{filter:brightness(1.3)}
+  .jlbl{fill:#eaf2ff;font-size:12px;font-weight:700;pointer-events:none}
+  .jsub{fill:#9fb2d0;font-size:9.5px;pointer-events:none}
+  #env{transition:transform .8s cubic-bezier(.45,.5,.2,1)}
+  .fx{opacity:0;transition:opacity .45s}
+  .fx.on{opacity:1}
+  .jprog{height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin:8px 2px 8px}
+  .jprog .b{height:100%;width:0;background:linear-gradient(90deg,#22d3ee,#3b82f6,#a855f7);transition:width .6s}
+  .jcap{background:#0c1322;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 2px 4px;min-height:92px}
+  .jcap .ct{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--accent);font-weight:800}
+  .jcap h4{margin:4px 0 6px;font-size:18px}
+  .jcap p{margin:0;font-size:14px;color:#dce6f5}
+  .jcap .chips{margin-top:9px;display:flex;gap:7px;flex-wrap:wrap}
+  .jcap .chip{font-size:11.5px;font-weight:700;color:#bcd2f0;background:#10203c;border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+
+  footer{border-top:1px solid var(--line);padding:24px 0 50px;color:var(--muted);font-size:12.5px}
+
+  /* SVG nodes */
+  .node{cursor:pointer}
+  .node .box{transition:.2s;stroke-width:1.5}
+  .node:hover .box{filter:brightness(1.3)}
+  .node.sel .box{stroke:#fff !important;stroke-width:2.5}
+  .node .lbl{fill:#eaf2ff;font-size:13px;font-weight:700;pointer-events:none}
+  .node .sub{fill:#9fb2d0;font-size:10.5px;pointer-events:none}
+  .region-lbl{fill:#9fb2d0;font-size:12px;font-weight:700;letter-spacing:.5px}
+  .region-tag{font-size:9.5px;letter-spacing:1px}
+  .flowlbl{fill:#7f93b3;font-size:10px;font-weight:600}
+  .topicchip{font-size:10px;font-weight:700}
+  .route-dim{opacity:.16;transition:opacity .4s}
+  .route-on{opacity:1;transition:opacity .4s}
+  @keyframes gwpulse{0%,100%{stroke-opacity:.55}50%{stroke-opacity:1}}
+  #gwHalo{animation:gwpulse 2.2s ease-in-out infinite}
+
+  /* MODAL */
+  .modal-bg{position:fixed;inset:0;background:rgba(4,8,15,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;opacity:0;pointer-events:none;transition:opacity .22s}
+  .modal-bg.show{opacity:1;pointer-events:auto}
+  .modal{background:linear-gradient(180deg,#15203a,#101829);border:1px solid var(--line);border-radius:18px;max-width:560px;width:100%;max-height:84vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(16px) scale(.97);transition:transform .24s;padding:26px 28px}
+  .modal-bg.show .modal{transform:none}
+  .modal .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.4px;color:var(--accent);font-weight:700}
+  .modal h2{margin:6px 0 4px;font-size:22px}
+  .modal .sub{color:var(--muted);font-size:13.5px;margin-bottom:16px}
+  .modal .whatwhy{display:grid;gap:12px;margin:0 0 14px}
+  .modal .ww{background:#0c1322;border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+  .modal .ww .h{font-size:11px;text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:5px}
+  .modal .ww.what .h{color:#7dd3fc}
+  .modal .ww.why .h{color:#fbbf24}
+  .modal .ww p{margin:0;font-size:14px;color:#dce6f5}
+  .modal h3{font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:16px 0 6px}
+  .modal ul{margin:0 0 8px;padding-left:18px}
+  .modal li{font-size:13px;margin:4px 0;color:#c6d3e8}
+  .modal code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0b1322;border:1px solid var(--line);padding:1px 6px;border-radius:6px;color:#9fe7ff;font-size:12px}
+  .modal pre{font-family:ui-monospace,Menlo,Consolas,monospace;background:#070c16;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font-size:11.5px;color:#cbd5e1;margin:8px 0}
+  .modal pre .c{color:#6b7a94}.modal pre .k{color:#7dd3fc}.modal pre .s{color:#86efac}
+  .pill{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;margin:6px 6px 0 0;border:1px solid var(--line);background:#0d1626;color:#cbd5e1}
+  .modal .x{position:sticky;top:0;float:right;background:#0c1322;border:1px solid var(--line);color:var(--muted);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;line-height:1;display:grid;place-items:center;margin:-6px -6px 0 0}
+  .modal .x:hover{color:#fff;border-color:var(--accent)}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>Confluent Cloud Gateway — Cluster Switchover on Azure</h1>
+    <p><b>What is the Confluent Cloud Gateway?</b> It's a smart proxy that speaks the Kafka protocol and sits in front of your Confluent Cloud clusters. Your apps connect to <i>one</i> address on the Gateway — they never talk to a cluster directly. Behind that single address, the Gateway decides which real cluster to forward traffic to, terminates and re-establishes TLS, and passes your login through untouched. Because the address your apps use never changes, you can move all traffic from the <b>Primary</b> cluster to the <b>DR</b> cluster — a disaster-recovery switchover — just by changing the Gateway's route. The apps never notice.</p>
+    <p style="margin-top:10px">This page walks through how a client reaches Kafka, what every certificate is for (in plain words), how to deploy it, and how that switchover flips traffic from Primary to DR. <b>Click any box or card</b> for a short "what it is / why we need it" popup.</p>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <div class="seg" role="tablist">
+      <button id="modeNormal" class="normal active">Normal operation</button>
+      <button id="modeFailover" class="failover">After failover (DR)</button>
+    </div>
+    <button id="playBtn" class="btn">⏸ Pause traffic</button>
+    <span id="modeBadge" class="badge live">● Gateway → PRIMARY (East US)</span>
+    <span class="hint">Switch modes to watch the route reflow to DR.</span>
+  </div>
+
+  <div class="canvas-card reveal">
+    <!-- ============ DIAGRAM ============ -->
+    <svg class="diagram" viewBox="0 0 1200 700" xmlns="http://www.w3.org/2000/svg" id="svg">
+      <defs>
+        <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#5b6e92"/></marker>
+        <marker id="arrowG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#34d399"/></marker>
+        <linearGradient id="gAzure" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#13243f"/><stop offset="1" stop-color="#0c1830"/></linearGradient>
+        <linearGradient id="gPrimary" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16243f"/><stop offset="1" stop-color="#101b30"/></linearGradient>
+        <linearGradient id="gDr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22193a"/><stop offset="1" stop-color="#160f29"/></linearGradient>
+      </defs>
+
+      <!-- Region containers -->
+      <rect x="30" y="70" width="560" height="600" rx="16" fill="url(#gAzure)" stroke="#2f6fed" stroke-opacity=".5" stroke-dasharray="4 4"/>
+      <text x="50" y="98" class="region-lbl">☁ AZURE · Central US</text>
+      <text x="50" y="114" class="region-tag" fill="#5b86d6">AKS + Confluent Gateway live here</text>
+
+      <rect x="630" y="70" width="540" height="270" rx="16" fill="url(#gPrimary)" stroke="#3b82f6" stroke-opacity=".5" stroke-dasharray="4 4"/>
+      <text x="650" y="98" class="region-lbl">☁ AZURE · East US</text>
+      <text x="650" y="114" class="region-tag" fill="#6f9bf0">Confluent Cloud — Primary (Standard)</text>
+
+      <rect x="630" y="400" width="540" height="270" rx="16" fill="url(#gDr)" stroke="#a855f7" stroke-opacity=".5" stroke-dasharray="4 4"/>
+      <text x="650" y="428" class="region-lbl">☁ AZURE · West US 2</text>
+      <text x="650" y="444" class="region-tag" fill="#c08bf3">Confluent Cloud — DR (Dedicated, 1 CKU)</text>
+
+      <!-- connectors -->
+      <path id="p_dns" d="M170,250 L170,300" stroke="#5b6e92" stroke-width="2" fill="none" stroke-dasharray="3 4" marker-end="url(#arrow)"/>
+      <text x="178" y="282" class="flowlbl">resolve</text>
+      <path d="M230,222 L300,196" stroke="#5b6e92" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+      <path d="M375,234 L375,300" stroke="#5b6e92" stroke-width="2.5" fill="none" marker-end="url(#arrow)"/>
+      <path id="route_primary" class="route-on" d="M450,330 C560,300 560,200 745,185" stroke="#3b82f6" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+      <path id="route_dr" class="route-dim" d="M450,372 C560,420 560,515 745,515" stroke="#a855f7" stroke-width="3" fill="none" marker-end="url(#arrow)"/>
+      <path id="link_cl" d="M960,300 L960,400" stroke="#34d399" stroke-width="3" fill="none" marker-end="url(#arrowG)" stroke-dasharray="6 5"/>
+
+      <!-- packets -->
+      <g id="packets">
+        <circle r="5" fill="#22d3ee" class="pkt"><animateMotion dur="2.4s" repeatCount="indefinite" path="M205,232 L300,196"/></circle>
+        <circle r="5" fill="#22d3ee" class="pkt"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.3s" path="M375,234 L375,300"/></circle>
+        <circle r="5.5" fill="#60a5fa" class="pkt pkt-primary"><animateMotion dur="2.6s" repeatCount="indefinite" begin="0.6s" path="M450,330 C560,300 560,200 745,185"/></circle>
+        <circle r="5.5" fill="#60a5fa" class="pkt pkt-primary"><animateMotion dur="2.6s" repeatCount="indefinite" begin="1.9s" path="M450,330 C560,300 560,200 745,185"/></circle>
+        <circle r="5.5" fill="#c084fc" class="pkt pkt-dr"><animateMotion dur="2.6s" repeatCount="indefinite" begin="0.6s" path="M450,372 C560,420 560,515 745,515"/></circle>
+        <circle r="5.5" fill="#c084fc" class="pkt pkt-dr"><animateMotion dur="2.6s" repeatCount="indefinite" begin="1.9s" path="M450,372 C560,420 560,515 745,515"/></circle>
+        <circle r="4.5" fill="#34d399" class="pkt pkt-link"><animateMotion dur="2s" repeatCount="indefinite" path="M960,300 L960,400"/></circle>
+        <circle r="4.5" fill="#34d399" class="pkt pkt-link"><animateMotion dur="2s" repeatCount="indefinite" begin="1s" path="M960,300 L960,400"/></circle>
+      </g>
+
+      <!-- NODES -->
+      <g class="node" data-key="client">
+        <rect class="box" x="80" y="182" width="150" height="68" rx="11" fill="#10203c" stroke="#22d3ee"/>
+        <text x="155" y="212" text-anchor="middle" class="lbl">kafka-tools</text>
+        <text x="155" y="230" text-anchor="middle" class="sub">Kafka client (your apps)</text>
+      </g>
+      <g class="node" data-key="dns">
+        <rect class="box" x="95" y="300" width="150" height="56" rx="11" fill="#101a30" stroke="#5b86d6"/>
+        <text x="170" y="325" text-anchor="middle" class="lbl">Private DNS</text>
+        <text x="170" y="342" text-anchor="middle" class="sub">kafka.cc.axa.com → IP</text>
+      </g>
+      <g class="node" data-key="loadbalancer">
+        <rect class="box" x="300" y="162" width="150" height="68" rx="11" fill="#10203c" stroke="#2f6fed"/>
+        <text x="375" y="192" text-anchor="middle" class="lbl">LoadBalancer</text>
+        <text x="375" y="210" text-anchor="middle" class="sub">Azure LB · :9092</text>
+      </g>
+      <g class="node" data-key="gateway">
+        <rect id="gwHalo" x="294" y="294" width="162" height="96" rx="13" fill="none" stroke="#22d3ee" stroke-opacity=".55"/>
+        <rect class="box" x="300" y="300" width="150" height="84" rx="11" fill="#13284a" stroke="#22d3ee"/>
+        <text x="375" y="330" text-anchor="middle" class="lbl">Confluent Gateway</text>
+        <text x="375" y="348" text-anchor="middle" class="sub">one door, two clusters</text>
+        <text x="375" y="370" text-anchor="middle" class="sub" id="gwRouteLbl" fill="#7dd3fc">route → CC_PRIMARY</text>
+      </g>
+      <g class="node" data-key="operator">
+        <rect class="box" x="300" y="412" width="150" height="56" rx="11" fill="#101a30" stroke="#4b5b80"/>
+        <text x="375" y="437" text-anchor="middle" class="lbl">CFK Operator</text>
+        <text x="375" y="454" text-anchor="middle" class="sub">builds the gateway</text>
+      </g>
+      <g class="node" data-key="secrets">
+        <rect class="box" x="95" y="412" width="150" height="56" rx="11" fill="#1c1733" stroke="#fbbf24"/>
+        <text x="170" y="437" text-anchor="middle" class="lbl">🔐 Secrets</text>
+        <text x="170" y="454" text-anchor="middle" class="sub">certs · keys · configs</text>
+      </g>
+      <path d="M245,440 L300,440" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="3 3" fill="none" opacity=".7" marker-end="url(#arrow)"/>
+      <path d="M170,412 L170,384 L300,360" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="3 3" fill="none" opacity=".5"/>
+
+      <g class="node" data-key="primary">
+        <rect class="box" x="745" y="150" width="380" height="120" rx="13" fill="#13243f" stroke="#3b82f6"/>
+        <text x="765" y="180" class="lbl">Primary Kafka Cluster</text>
+        <text x="765" y="198" class="sub">Standard · elastic · East US</text>
+        <rect x="765" y="214" width="160" height="38" rx="8" fill="#0d1830" stroke="#274063"/>
+        <text x="775" y="231" class="topicchip" fill="#9fe7ff">test_topic</text>
+        <text x="775" y="245" class="sub">writable</text>
+        <rect x="940" y="214" width="170" height="38" rx="8" fill="#0d1830" stroke="#274063"/>
+        <text x="950" y="231" class="topicchip" fill="#86efac">mirrored_topic</text>
+        <text x="950" y="245" class="sub">source · writable</text>
+      </g>
+
+      <g class="node" data-key="dr">
+        <rect class="box" x="745" y="480" width="380" height="120" rx="13" fill="#22193a" stroke="#a855f7"/>
+        <text x="765" y="510" class="lbl">DR Kafka Cluster</text>
+        <text x="765" y="528" class="sub">Dedicated · 1 CKU · West US 2</text>
+        <rect x="765" y="544" width="160" height="38" rx="8" fill="#190f2b" stroke="#46306b"/>
+        <text x="775" y="561" class="topicchip" fill="#d8b4fe">test_topic</text>
+        <text x="775" y="575" class="sub">writable</text>
+        <rect x="940" y="544" width="170" height="38" rx="8" fill="#190f2b" stroke="#46306b"/>
+        <text x="950" y="561" class="topicchip" fill="#fbbf24" id="mirrorChip">mirrored_topic</text>
+        <text x="950" y="575" class="sub" id="mirrorState">read-only mirror</text>
+      </g>
+
+      <g class="node" data-key="clusterlink">
+        <rect class="box" x="880" y="330" width="160" height="40" rx="9" fill="#0e2a22" stroke="#34d399"/>
+        <text x="960" y="350" text-anchor="middle" class="lbl" style="font-size:11.5px">⇄ Cluster Link</text>
+        <text x="960" y="364" text-anchor="middle" class="sub">copies Primary → DR</text>
+      </g>
+
+      <g class="node" data-key="sr">
+        <rect class="box" x="980" y="92" width="150" height="44" rx="10" fill="#101a30" stroke="#4b5b80"/>
+        <text x="1055" y="112" text-anchor="middle" class="lbl" style="font-size:12px">Schema Registry</text>
+        <text x="1055" y="127" text-anchor="middle" class="sub">Advanced · public</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i class="ln" style="border-color:#3b82f6"></i> Active route → Primary</span>
+    <span><i class="ln" style="border-color:#a855f7"></i> Route → DR (after failover)</span>
+    <span><i class="ln" style="border-color:#34d399;border-style:dashed"></i> Cluster-link replication</span>
+    <span><i class="dot" style="background:#fbbf24"></i> Certificates / secrets</span>
+    <span><i class="dot" style="background:#22d3ee"></i> Live data packet</span>
+  </div>
+
+  <!-- ============ MESSAGE JOURNEY (animated) ============ -->
+  <section class="block" id="journey">
+    <h2 class="title reveal">How one message travels</h2>
+    <p class="lead reveal">Follow a single order — <code>order-1234</code> — from your app all the way into Kafka and back. Press <b>Play</b> and watch each step happen, or step through with Back / Next.</p>
+    <div class="journey-card reveal">
+      <div class="jctrl">
+        <button class="jbtn primary" id="jPlay">▶ Play</button>
+        <button class="jbtn" id="jPrev">‹ Back</button>
+        <button class="jbtn" id="jNext">Next ›</button>
+        <button class="jbtn" id="jReplay">↻ Restart</button>
+        <span class="jstepcount" id="jCount">1 / 9</span>
+      </div>
+
+      <svg class="journey" viewBox="0 0 1100 300" id="jsvg" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="jarr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#5b6e92"/></marker>
+          <marker id="jarrG" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#34d399"/></marker>
+        </defs>
+
+        <!-- connectors -->
+        <path d="M150,150 L188,150" stroke="#3a4a68" stroke-width="2" fill="none" marker-end="url(#jarr)"/>
+        <path d="M310,150 L358,150" stroke="#3a4a68" stroke-width="2" fill="none" marker-end="url(#jarr)"/>
+        <path d="M480,150 L538,150" stroke="#3a4a68" stroke-width="2" fill="none" marker-end="url(#jarr)"/>
+        <path d="M670,150 C712,150 730,119 758,119" stroke="#3a4a68" stroke-width="2" fill="none" marker-end="url(#jarr)"/>
+        <path d="M830,150 L830,228" stroke="#34d399" stroke-width="2.2" fill="none" stroke-dasharray="6 5" marker-end="url(#jarrG)"/>
+        <text x="842" y="196" fill="#34d399" font-size="10" font-weight="700">cluster link</text>
+
+        <!-- stops -->
+        <g class="jstop" id="js_app">
+          <rect class="halo" x="26" y="116" width="128" height="68" rx="14" fill="none" stroke="#22d3ee" stroke-width="2"/>
+          <rect class="jbox" x="30" y="120" width="120" height="60" rx="11" fill="#10203c" stroke="#22d3ee"/>
+          <text x="90" y="146" text-anchor="middle" class="jlbl">Your app</text>
+          <text x="90" y="164" text-anchor="middle" class="jsub">producer / client</text>
+        </g>
+        <g class="jstop" id="js_dns">
+          <rect class="halo" x="186" y="116" width="128" height="68" rx="14" fill="none" stroke="#5b86d6" stroke-width="2"/>
+          <rect class="jbox" x="190" y="120" width="120" height="60" rx="11" fill="#101a30" stroke="#5b86d6"/>
+          <text x="250" y="146" text-anchor="middle" class="jlbl">Private DNS</text>
+          <text x="250" y="164" text-anchor="middle" class="jsub">name → IP</text>
+        </g>
+        <g class="jstop" id="js_lb">
+          <rect class="halo" x="356" y="116" width="128" height="68" rx="14" fill="none" stroke="#2f6fed" stroke-width="2"/>
+          <rect class="jbox" x="360" y="120" width="120" height="60" rx="11" fill="#10203c" stroke="#2f6fed"/>
+          <text x="420" y="146" text-anchor="middle" class="jlbl">LoadBalancer</text>
+          <text x="420" y="164" text-anchor="middle" class="jsub">Azure LB :9092</text>
+        </g>
+        <g class="jstop" id="js_gateway">
+          <rect class="halo" x="536" y="114" width="138" height="72" rx="15" fill="none" stroke="#22d3ee" stroke-width="2"/>
+          <rect class="jbox" x="540" y="118" width="130" height="64" rx="11" fill="#13284a" stroke="#22d3ee"/>
+          <text x="605" y="146" text-anchor="middle" class="jlbl">Gateway</text>
+          <text x="605" y="164" text-anchor="middle" class="jsub">proxy + TLS</text>
+        </g>
+        <g class="jstop" id="js_primary">
+          <rect class="halo" x="756" y="84" width="148" height="70" rx="15" fill="none" stroke="#3b82f6" stroke-width="2"/>
+          <rect class="jbox" x="760" y="88" width="140" height="62" rx="11" fill="#13243f" stroke="#3b82f6"/>
+          <text x="830" y="115" text-anchor="middle" class="jlbl">Primary broker</text>
+          <text x="830" y="133" text-anchor="middle" class="jsub">mirrored_topic</text>
+        </g>
+        <g class="jstop" id="js_dr">
+          <rect class="halo" x="756" y="226" width="148" height="70" rx="15" fill="none" stroke="#a855f7" stroke-width="2"/>
+          <rect class="jbox" x="760" y="230" width="140" height="62" rx="11" fill="#22193a" stroke="#a855f7"/>
+          <text x="830" y="257" text-anchor="middle" class="jlbl">DR broker</text>
+          <text x="830" y="275" text-anchor="middle" class="jsub">read-only mirror</text>
+        </g>
+
+        <!-- fx overlays -->
+        <g id="fx_ip" class="fx"><rect x="196" y="188" width="118" height="24" rx="8" fill="#0c1f1a" stroke="#34d399"/><text x="255" y="204" text-anchor="middle" fill="#86efac" font-size="11" font-weight="700">→ 20.221.116.2</text></g>
+        <text id="fx_lock" class="fx" x="605" y="108" text-anchor="middle" fill="#7dd3fc" font-size="12" font-weight="800">🔒 encrypted</text>
+        <text id="fx_route" class="fx" x="605" y="200" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="800">route → cc-primary</text>
+        <text id="fx_offset" class="fx" x="990" y="116" text-anchor="middle" fill="#86efac" font-size="11" font-weight="800">✓ offset 57</text>
+        <text id="fx_drcopy" class="fx" x="990" y="258" text-anchor="middle" fill="#c084fc" font-size="11" font-weight="800">✓ copied ~1s</text>
+        <g id="fx_check" class="fx"><text x="90" y="200" text-anchor="middle" fill="#86efac" font-size="12" font-weight="800">✓ delivered</text></g>
+
+        <!-- the travelling message -->
+        <g id="env" transform="translate(38,133)">
+          <rect width="104" height="34" rx="9" fill="#13284a" stroke="#22d3ee" stroke-width="1.5"/>
+          <text x="52" y="22" text-anchor="middle" fill="#eaf2ff" font-size="12" font-weight="700">📦 order-1234</text>
+        </g>
+      </svg>
+
+      <div class="jprog"><div class="b" id="jBar"></div></div>
+      <div class="jcap">
+        <div class="ct" id="jCt">Your app</div>
+        <h4 id="jTitle">A message is created</h4>
+        <p id="jDesc">Press Play to follow the message.</p>
+        <div class="chips" id="jChips"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CONCEPT CARDS ============ -->
+  <section class="block">
+    <h2 class="title reveal">Core concepts — click for a quick popup</h2>
+    <p class="lead reveal">The parts people find confusing: the three certificate bundles, what a "client" is, and why each one is needed. Each opens a short popup — the page stays where you are.</p>
+    <div class="grid" id="cardGrid"></div>
+  </section>
+
+  <!-- ============ DEPLOYMENT STEPS ============ -->
+  <section class="block">
+    <h2 class="title reveal">How to deploy this setup</h2>
+    <p class="lead reveal">The fastest path is <code>./deploy.sh</code> (one command, ~45–50 min). Below is what that command does, in order — press <b>Play</b> to walk through it.</p>
+    <div class="controls"><button id="playDeploy" class="btn">▶ Play deployment</button><span class="hint">or just scroll — each step lights up.</span></div>
+    <div class="deploy" id="deploy">
+      <div class="dline"><div class="fill" id="dfill"></div></div>
+      <!-- steps injected -->
+    </div>
+  </section>
+
+  <!-- ============ SWITCHOVER ============ -->
+  <section class="block">
+    <h2 class="title reveal">What "switchover" does</h2>
+    <p class="lead reveal">Toggle <b>After failover (DR)</b> up top to watch it. Two moves: move the data, then move the traffic.</p>
+    <div class="flowsteps">
+      <div class="step reveal d1"><div class="n">1</div><h4>Pause Primary</h4><p>Stop writing to Primary; let the copy catch up.</p></div>
+      <div class="step reveal d2"><div class="n">2</div><h4>Promote the mirror</h4><p>DR's read-only copy becomes writable. Replication stops. Can't undo.</p></div>
+      <div class="step reveal d3"><div class="n">3</div><h4>Re-point the gateway</h4><p>Change the route from <span class="mono">cc-primary</span> to <span class="mono">cc-dr</span>.</p></div>
+      <div class="step reveal d4"><div class="n">4</div><h4>Apply &amp; restart</h4><p><span class="mono">kubectl apply</span> + restart the gateway pod.</p></div>
+      <div class="step reveal d5"><div class="n">5</div><h4>Clients unaware</h4><p>Same address, same port — apps never notice.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    Built from this repo's <span class="mono">README.md</span>, <span class="mono">Makefile</span>, <span class="mono">deploy.sh</span>, <span class="mono">kubernetes-resources/gateway.yaml</span>, and the Terraform under <span class="mono">terraform/</span>. Self-contained — works offline.
+  </footer>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <button class="x" id="modalX" aria-label="Close">✕</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- Simple "what it is / why we need it" content ---------- */
+const DATA = {
+  client:{icon:"🧰",eyebrow:"Kafka client",title:"kafka-tools (and your apps)",sub:"The thing that sends and reads messages.",
+    what:"A producer or consumer — here a test pod, in real life your microservices.",
+    why:"It's who actually uses Kafka. The key point: it talks to ONE address and never needs to know which real cluster is behind it.",
+    extra:`<h3>How it connects</h3><ul><li>Address: <code>kafka.cc.axa.com:9092</code></li><li>Logs in with an API key (username/password)</li><li>Trusts the gateway using a mounted truststore file</li></ul>
+    <pre><span class="c"># send 3 messages through the gateway</span>
+kafka-console-producer \\
+  --bootstrap-server kafka.cc.axa.com:9092 \\
+  --producer.config .../client-primary.properties \\
+  --topic mirrored_topic</pre>
+    <span class="pill">kubernetes-resources/kafka-tools.yaml</span>`},
+
+  dns:{icon:"🧭",eyebrow:"Name lookup",title:"Azure Private DNS",sub:"Turns the friendly name into an IP.",
+    what:"A private address book: <code>kafka.cc.axa.com</code> → the gateway's LoadBalancer IP.",
+    why:"It gives clients a name that never changes. You can swap the cluster behind the gateway and clients keep using the same name.",
+    extra:`<h3>Created by</h3><ul><li>Terraform makes the zone + empty record</li><li><code>deploy.sh</code> fills in the IP after the LoadBalancer is ready</li></ul><span class="pill">A record · TTL 300s</span>`},
+
+  loadbalancer:{icon:"⚖️",eyebrow:"Entry point",title:"Azure LoadBalancer",sub:"The public door on port 9092.",
+    what:"An Azure LoadBalancer with a stable IP that forwards :9092 to the gateway pod.",
+    why:"Pods come and go; the LoadBalancer gives a fixed IP for DNS to point at, and routes traffic in from outside AKS.",
+    extra:`<span class="pill">service: confluent-gateway-bootstrap-lb</span>`},
+
+  gateway:{icon:"🚪",eyebrow:"The key piece",title:"Confluent Gateway",sub:"One front door in front of two clusters.",
+    what:"A Kafka proxy. Clients connect to it, and it forwards them to whichever cluster is currently 'active'.",
+    why:"It's what makes switchover invisible. To move from Primary to DR you change ONE setting in the gateway — no client touches anything.",
+    extra:`<h3>What's inside</h3><ul><li>Two upstreams: <code>cc-primary</code> and <code>cc-dr</code></li><li>One route that points at one of them at a time</li><li>Shows its own cert to clients; auth is passed straight through to Confluent</li></ul>
+    <pre><span class="k">route</span>:
+  streamingDomain:
+    name: <span class="s">cc-primary</span>     <span class="c"># change to cc-dr to switch</span>
+    bootstrapServerId: <span class="s">CC_PRIMARY</span></pre>
+    <span class="pill">kubernetes-resources/gateway.yaml</span>`},
+
+  operator:{icon:"⚙️",eyebrow:"Builder",title:"Confluent for Kubernetes (CFK)",sub:"Turns your YAML into running pods.",
+    what:"A Kubernetes operator that reads the Gateway file and creates the actual gateway pods and config.",
+    why:"You just describe what you want; CFK builds and maintains it. When you edit the route, it applies the change for you.",
+    extra:`<pre>helm install confluent-operator \\
+  confluentinc/confluent-for-kubernetes -n confluent</pre>`},
+
+  secrets:{icon:"🔐",eyebrow:"Trust material",title:"Kubernetes Secrets",sub:"Where all the certs and keys are stored.",
+    what:"Six secrets holding certificates, truststores, and client configs, mounted into the pods that need them.",
+    why:"TLS and passwords can't be hard-coded. Secrets keep them safe and inject them into the gateway and clients at runtime.",
+    extra:`<h3>The six</h3><ul><li><code>gateway-tls</code> — gateway's own cert</li><li><code>gateway-truststore</code> — lets clients trust the gateway</li><li><code>cc-primary-tls</code> / <code>cc-dr-tls</code> — let the gateway trust Confluent</li><li><code>client-primary</code> / <code>client-dr</code> — client login configs</li></ul><span class="pill">make k8s-secrets</span>`},
+
+  primary:{icon:"🟦",eyebrow:"Active cluster",title:"Primary Cluster (Standard)",sub:"East US · normal home for all traffic.",
+    what:"A Confluent Cloud Standard cluster that handles all reads and writes during normal operation.",
+    why:"It's the main cluster. Standard type is elastic and cheaper, good for everyday load.",
+    extra:`<h3>Topics</h3><ul><li><code>test_topic</code> — writable</li><li><code>mirrored_topic</code> — writable source, copied to DR</li></ul><span class="pill">~$50–100/mo</span><span class="pill">SLA 99.9%</span>`},
+
+  dr:{icon:"🟪",eyebrow:"Standby cluster",title:"DR Cluster (Dedicated)",sub:"West US 2 · takes over in a disaster.",
+    what:"A Confluent Cloud Dedicated cluster that holds a live copy of the data and becomes active after failover.",
+    why:"If Primary or its whole region goes down, you still have the data here and can switch to it fast.",
+    extra:`<h3>Topics</h3><ul><li><code>test_topic</code> — its own writable topic</li><li><code>mirrored_topic</code> — read-only copy until you promote it</li></ul><span class="pill">~$500/mo</span><span class="pill">SLA 99.95%</span>`},
+
+  clusterlink:{icon:"⇄",eyebrow:"Replication",title:"Cluster Link",sub:"Copies data Primary → DR, continuously.",
+    what:"A built-in Confluent feature that streams data from Primary to DR in near real time (usually under 1 second behind).",
+    why:"So DR is always up to date. Without it, failover would lose data.",
+    extra:`<h3>The mirror topic</h3><p><code>mirrored_topic</code> on DR is a live copy and stays <b>read-only</b> — until failover 'promotes' it to writable (which also stops the copying).</p><span class="pill">primary-to-dr-link</span>`},
+
+  sr:{icon:"📋",eyebrow:"Governance",title:"Schema Registry",sub:"Stores the shape of your messages.",
+    what:"A service that stores message schemas (Avro/Protobuf/JSON) and enforces compatibility.",
+    why:"It stops a producer from sending data that consumers can't read. Here it's the Advanced package, with a public endpoint (not behind the gateway).",
+    extra:`<span class="pill">stream_governance: ADVANCED</span>`},
+
+  /* certificate concept cards */
+  trustmodel:{icon:"🔁",eyebrow:"The big idea",title:"Who trusts whom (2 secure lines)",sub:"The one thing to remember about the certs.",
+    what:"There are TWO separate encrypted connections, and each needs its own certificate.",
+    why:"The gateway sits in the middle: it's a 'server' to your client, and a 'client' to Confluent. Each side needs proof of who it's talking to.",
+    extra:`<h3>Line 1 · Client → Gateway</h3><ul><li>Gateway shows <code>gateway-tls</code> (its ID card)</li><li>Client checks it with <code>gateway-truststore</code></li></ul>
+    <h3>Line 2 · Gateway → Confluent</h3><ul><li>Confluent shows its public cert</li><li>Gateway checks it with <code>cc-primary-tls</code> / <code>cc-dr-tls</code></li></ul>
+    <p>Your login (API key) is just passed straight through to Confluent.</p>`},
+
+  certGateway:{icon:"🪪",eyebrow:"Cert bundle #1",title:"gateway-tls-cert/ — the gateway's ID card",
+    sub:"The certificate the gateway shows to clients.",
+    what:"The gateway's own certificate for the name <code>kafka.cc.axa.com</code> (plus a private key).",
+    why:"When a client connects, it needs proof it's really talking to the gateway and not an imposter. This cert is that proof.",
+    extra:`<h3>Made by the Makefile</h3><ul><li>A small private CA just for this demo</li><li>The gateway cert, signed by that CA</li><li>Includes the name + wildcard so the hostname check passes</li></ul><span class="pill">make gateway-certs</span><span class="pill">secret: gateway-tls</span>`},
+
+  certTruststore:{icon:"🤝",eyebrow:"Cert bundle #2",title:"gateway-truststore — so clients trust it",
+    sub:"The CA cert handed to clients.",
+    what:"A truststore containing the gateway's CA, given to every client.",
+    why:"The gateway's cert is self-signed, so clients won't trust it by default. This file tells the client 'this CA is OK' — so the handshake succeeds.",
+    extra:`<ul><li>Mounted at <code>/etc/kafka/tls/truststore.jks</code></li><li>Client configs point to it</li></ul><span class="pill">secret: gateway-truststore</span>`},
+
+  certCC:{icon:"☁️",eyebrow:"Cert bundle #3",title:"certs/ — so the gateway trusts Confluent",
+    sub:"Truststores for the real Confluent clusters.",
+    what:"The CA certificates of the real Confluent Cloud brokers, one truststore per cluster.",
+    why:"When the gateway calls out to Confluent, IT becomes the client and must verify Confluent is real. These let it do that.",
+    extra:`<h3>How they're made</h3><ul><li><code>download-cc-certs.sh</code> grabs each cluster's cert chain</li><li>Converted to JKS and stored as secrets</li></ul><span class="pill">make confluent-certs</span><span class="pill">secrets: cc-primary-tls, cc-dr-tls</span>`},
+
+  clients:{icon:"📝",eyebrow:"Login configs",title:"clients/ — how clients log in",
+    sub:"The .properties files with API keys.",
+    what:"Small config files telling a client how to connect securely: which login (API key) and which truststore.",
+    why:"Every client needs credentials and TLS settings. One file per cluster keeps Primary and DR logins separate.",
+    extra:`<pre><span class="k">security.protocol</span>=SASL_SSL
+<span class="k">sasl.jaas.config</span>=…username="<span class="s">KEY</span>" password="<span class="s">SECRET</span>";
+<span class="k">ssl.truststore.location</span>=/etc/kafka/tls/truststore.jks</pre>
+    <ul><li><code>client-primary.properties</code> — Primary key</li><li><code>client-dr.properties</code> — DR key</li></ul><span class="pill">make client-configs</span>`},
+
+  failoverScript:{icon:"🔄",eyebrow:"DR procedure",title:"Failover / switchover",sub:"Move the data, then move the traffic.",
+    what:"The two-step process to make DR the live cluster.",
+    why:"In a disaster you need DR to start serving traffic without clients changing anything.",
+    extra:`<h3>1 · Promote the data</h3><pre>./scripts/failover-mirrored-topic.sh   <span class="c"># type 'yes'</span></pre>
+    <h3>2 · Move the traffic</h3><pre><span class="c"># gateway.yaml: cc-primary → cc-dr</span>
+kubectl apply -f kubernetes-resources/gateway.yaml -n confluent
+kubectl delete pod -n confluent -l app=confluent-gateway</pre>
+    <p>Same DNS name and port, so apps don't notice.</p><span class="pill">irreversible</span>`}
+};
+
+const CARDS = [
+  ["trustmodel","🔁","Who trusts whom","Two secure lines — the one idea behind all the certs."],
+  ["certGateway","🪪","gateway-tls-cert/","The gateway's own ID card."],
+  ["certTruststore","🤝","gateway-truststore","Lets clients trust the gateway."],
+  ["certCC","☁️","certs/","Lets the gateway trust Confluent."],
+  ["clients","📝","clients/","How clients log in (API keys)."],
+  ["secrets","🔐","K8s secrets","Where all certs & keys live."],
+  ["clusterlink","⇄","Cluster linking","Keeps DR in sync with Primary."],
+  ["failoverScript","🔄","Failover","Promote the data, move the traffic."]
+];
+
+/* deployment steps */
+const DEPLOY = [
+  ["Prerequisites","Install the tools and log in to Azure & Confluent Cloud.","az login\ncp .env.example .env   # then fill in your values","2 min"],
+  ["Run one command","Kick off the whole automated deploy.","./deploy.sh","~45–50 min total"],
+  ["Azure AKS","Terraform builds the Kubernetes cluster, network, and DNS zone.","terraform/aks → AKS + VNet + Private DNS","10–15 min"],
+  ["Confluent clusters","Terraform creates Primary (Standard), DR (Dedicated), topics & the cluster link.","terraform/confluent-cloud → 2 clusters + link","35–45 min"],
+  ["Operator","Helm installs Confluent for Kubernetes into the cluster.","helm install confluent-operator …","2 min"],
+  ["Certificates","The Makefile generates all certs and creates the 6 secrets.","make certs && make k8s-secrets","5 min"],
+  ["Gateway","Deploy the gateway; Azure gives it a LoadBalancer IP; DNS is updated.","kubectl apply -f kubernetes-resources/gateway.yaml","3 min"],
+  ["Test it","Deploy kafka-tools and produce/consume through the gateway.","./scripts/verify-cluster-linking.sh","1 min"]
+];
+
+/* ---------- Modal ---------- */
+const modalBg=document.getElementById('modalBg');
+const modalContent=document.getElementById('modalContent');
+function openModal(key){
+  const d=DATA[key]; if(!d) return;
+  modalContent.innerHTML=`
+    <div class="eyebrow">${d.icon} ${d.eyebrow}</div>
+    <h2>${d.title}</h2>
+    <div class="sub">${d.sub}</div>
+    <div class="whatwhy">
+      <div class="ww what"><div class="h">What it is</div><p>${d.what}</p></div>
+      <div class="ww why"><div class="h">Why we need it</div><p>${d.why}</p></div>
+    </div>
+    ${d.extra||""}`;
+  modalBg.classList.add('show');
+  document.querySelectorAll('.node').forEach(n=>n.classList.remove('sel'));
+  const node=document.querySelector(`.node[data-key="${key}"]`);
+  if(node) node.classList.add('sel');
+}
+function closeModal(){modalBg.classList.remove('show');document.querySelectorAll('.node').forEach(n=>n.classList.remove('sel'));}
+document.getElementById('modalX').addEventListener('click',closeModal);
+modalBg.addEventListener('click',e=>{if(e.target===modalBg)closeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+document.querySelectorAll('.node').forEach(n=>n.addEventListener('click',()=>openModal(n.dataset.key)));
+
+/* build cards */
+const grid=document.getElementById('cardGrid');
+CARDS.forEach(([key,ic,title,desc],i)=>{
+  const el=document.createElement('div');
+  el.className='card reveal d'+((i%6)+1);
+  el.innerHTML=`<div class="ic">${ic}</div><h3>${title}</h3><p>${desc}</p><div class="tag">open →</div>`;
+  el.addEventListener('click',()=>openModal(key));
+  grid.appendChild(el);
+});
+
+/* build deploy steps */
+const deploy=document.getElementById('deploy');
+DEPLOY.forEach(([h,p,cmd,time],i)=>{
+  const el=document.createElement('div');
+  el.className='dstep reveal';
+  el.dataset.i=i;
+  el.innerHTML=`<div class="num">${i+1}</div><div class="dbody"><h4>${h}</h4><p>${p}</p><span class="cmd">${cmd}</span><span class="time">⏱ ${time}</span></div>`;
+  deploy.appendChild(el);
+});
+const dsteps=[...document.querySelectorAll('.dstep')];
+const dfill=document.getElementById('dfill');
+
+/* ---------- Mode toggle ---------- */
+const btnNormal=document.getElementById('modeNormal'),btnFail=document.getElementById('modeFailover'),badge=document.getElementById('modeBadge');
+const routePrimary=document.getElementById('route_primary'),routeDr=document.getElementById('route_dr'),linkCl=document.getElementById('link_cl');
+const gwRouteLbl=document.getElementById('gwRouteLbl'),mirrorChip=document.getElementById('mirrorChip'),mirrorState=document.getElementById('mirrorState');
+function setMode(f){
+  btnNormal.classList.toggle('active',!f);btnFail.classList.toggle('active',f);
+  routePrimary.classList.toggle('route-on',!f);routePrimary.classList.toggle('route-dim',f);
+  routeDr.classList.toggle('route-on',f);routeDr.classList.toggle('route-dim',!f);
+  document.querySelectorAll('.pkt-primary').forEach(p=>p.style.display=f?'none':'');
+  document.querySelectorAll('.pkt-dr').forEach(p=>p.style.display=f?'':'none');
+  document.querySelectorAll('.pkt-link').forEach(p=>p.style.display=f?'none':'');
+  linkCl.style.opacity=f?'.2':'1';
+  gwRouteLbl.textContent=f?'route → CC_DR':'route → CC_PRIMARY';
+  if(f){badge.className='badge fail';badge.textContent='● Gateway → DR (West US 2)';mirrorChip.setAttribute('fill','#86efac');mirrorState.textContent='promoted · writable';}
+  else{badge.className='badge live';badge.textContent='● Gateway → PRIMARY (East US)';mirrorChip.setAttribute('fill','#fbbf24');mirrorState.textContent='read-only mirror';}
+}
+btnNormal.addEventListener('click',()=>setMode(false));
+btnFail.addEventListener('click',()=>setMode(true));
+setMode(false);
+
+/* ---------- Play / pause traffic ---------- */
+const playBtn=document.getElementById('playBtn');let running=true;const svg=document.getElementById('svg');
+playBtn.addEventListener('click',()=>{running=!running;if(running){svg.unpauseAnimations();playBtn.textContent='⏸ Pause traffic';}else{svg.pauseAnimations();playBtn.textContent='▶ Play traffic';}});
+
+/* ---------- Reveal on scroll ---------- */
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}})},{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+/* deploy fill grows as steps come into view */
+const dio=new IntersectionObserver(es=>{
+  es.forEach(e=>{if(e.isIntersecting){const i=+e.target.dataset.i;dfill.style.height=(((i+1)/dsteps.length)*100)+'%';}})
+},{threshold:.6});
+dsteps.forEach(s=>dio.observe(s));
+
+/* ---------- Play deployment walkthrough ---------- */
+document.getElementById('playDeploy').addEventListener('click',()=>{
+  document.getElementById('deploy').scrollIntoView({behavior:'smooth',block:'start'});
+  let i=0;
+  function tick(){
+    dsteps.forEach(s=>s.classList.remove('on'));
+    if(i<dsteps.length){
+      dsteps[i].classList.add('on');
+      dfill.style.height=(((i+1)/dsteps.length)*100)+'%';
+      i++;setTimeout(tick,1100);
+    }
+  }
+  tick();
+});
+
+/* ---------- How one message travels ---------- */
+const J_STEPS=[
+  {stop:'js_app', pos:[38,133], fx:[],
+   ct:'Your app', title:'A message is created',
+   desc:'Your producer builds one record — order-1234 — and addresses it to kafka.cc.axa.com:9092, the only Kafka address it ever knows.',
+   chips:['topic: mirrored_topic','key: order-1234','one stable address']},
+  {stop:'js_dns', pos:[198,133], fx:['fx_ip'],
+   ct:'Private DNS', title:'The name becomes an IP',
+   desc:'Azure Private DNS looks up kafka.cc.axa.com and returns the LoadBalancer’s private IP, 20.221.116.2. The app never hard-codes a broker.',
+   chips:['kafka.cc.axa.com','→ 20.221.116.2','private zone']},
+  {stop:'js_lb', pos:[368,133], fx:[],
+   ct:'Azure LoadBalancer', title:'TCP reaches the entry point',
+   desc:'The record travels to the Standard LoadBalancer on port 9092 and is forwarded into the cluster, to the Gateway pod.',
+   chips:['port 9092','Standard LB','→ Gateway pod']},
+  {stop:'js_gateway', pos:[553,133], fx:['fx_lock'],
+   ct:'Gateway — hop 1', title:'TLS handshake (client → gateway)',
+   desc:'The Gateway presents its gateway-tls certificate. Your client checks it against the gateway-truststore, then the connection is encrypted.',
+   chips:['gateway-tls','gateway-truststore','🔒 encrypted']},
+  {stop:'js_gateway', pos:[553,133], fx:['fx_lock','fx_route'],
+   ct:'Gateway — routing', title:'Auth passes through, route is chosen',
+   desc:'The Gateway does not check your password — auth is passthrough. It reads its route and decides this traffic goes to cc-primary.',
+   chips:['auth: passthrough','route: switchover-route','target: cc-primary']},
+  {stop:'js_primary', pos:[778,102], fx:['fx_lock','fx_route'],
+   ct:'Gateway — hop 2', title:'Second TLS, out to Confluent Cloud',
+   desc:'Now the Gateway is the client. It opens a fresh TLS connection to the Primary cluster (pkc-…eastus), trusting it via cc-primary-tls, and forwards the record.',
+   chips:['cc-primary-tls','pkc-…eastus:9092','gateway = client']},
+  {stop:'js_primary', pos:[778,102], fx:['fx_offset'],
+   ct:'Primary broker', title:'The record is stored',
+   desc:'The Primary broker appends order-1234 to mirrored_topic and assigns it a permanent offset — here, offset 57.',
+   chips:['mirrored_topic','partition 2','✓ offset 57']},
+  {stop:'js_dr', pos:[778,244], fx:['fx_offset','fx_drcopy'],
+   ct:'Cluster Link', title:'A copy lands in DR',
+   desc:'Cluster Linking streams the same record to the DR cluster within about a second, where it sits in a read-only mirror — ready if you ever fail over.',
+   chips:['cluster link','DR = read-only','✓ copied ~1s']},
+  {stop:'js_app', pos:[38,133], fx:['fx_check'],
+   ct:'Back to your app', title:'Acknowledged — delivered',
+   desc:'The broker’s ack travels back through the same two TLS hops to your app. order-1234 is safely delivered — and already mirrored.',
+   chips:['ack returned','✓ delivered','same address throughout']}
+];
+const env=document.getElementById('env');
+const jBar=document.getElementById('jBar');
+const jCount=document.getElementById('jCount');
+const jCt=document.getElementById('jCt'), jTitle=document.getElementById('jTitle'), jDesc=document.getElementById('jDesc'), jChips=document.getElementById('jChips');
+const jPlayBtn=document.getElementById('jPlay');
+let jIdx=0, jTimer=null;
+const allFx=['fx_ip','fx_lock','fx_route','fx_offset','fx_drcopy','fx_check'];
+function jRender(i){
+  const s=J_STEPS[i];
+  env.style.transform=`translate(${s.pos[0]}px,${s.pos[1]}px)`;
+  allFx.forEach(id=>document.getElementById(id).classList.toggle('on', s.fx.includes(id)));
+  document.querySelectorAll('#jsvg .jstop').forEach(g=>g.classList.remove('active'));
+  document.getElementById(s.stop).classList.add('active');
+  jCt.textContent=s.ct; jTitle.textContent=s.title; jDesc.textContent=s.desc;
+  jChips.innerHTML=s.chips.map(c=>`<span class="chip">${c}</span>`).join('');
+  jCount.textContent=`${i+1} / ${J_STEPS.length}`;
+  jBar.style.width=(((i+1)/J_STEPS.length)*100)+'%';
+}
+function jStop(){if(jTimer){clearInterval(jTimer);jTimer=null;}jPlayBtn.textContent='▶ Play';}
+function jPlay(){
+  if(jTimer){jStop();return;}
+  if(jIdx>=J_STEPS.length-1)jIdx=0;
+  jRender(jIdx);
+  jPlayBtn.textContent='⏸ Pause';
+  jTimer=setInterval(()=>{
+    if(jIdx>=J_STEPS.length-1){jStop();return;}
+    jIdx++;jRender(jIdx);
+  },2400);
+}
+jPlayBtn.addEventListener('click',jPlay);
+document.getElementById('jNext').addEventListener('click',()=>{jStop();jIdx=Math.min(jIdx+1,J_STEPS.length-1);jRender(jIdx);});
+document.getElementById('jPrev').addEventListener('click',()=>{jStop();jIdx=Math.max(jIdx-1,0);jRender(jIdx);});
+document.getElementById('jReplay').addEventListener('click',()=>{jStop();jIdx=0;jRender(jIdx);});
+jRender(0);
+</script>
+</body>
+</html>

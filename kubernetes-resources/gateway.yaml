@@ -1,0 +1,61 @@
+apiVersion: platform.confluent.io/v1beta1
+kind: Gateway
+metadata:
+  labels:
+    app.kubernetes.io/name: confluent-for-kubernetes
+    app.kubernetes.io/managed-by: kustomize
+  name: confluent-gateway
+  namespace: confluent
+spec:
+  replicas: 1
+  podTemplate:
+    envVars:
+      - name: GATEWAY_LOG_LEVEL
+        value: DEBUG
+  image:
+    application: confluentinc/confluent-gateway-for-cloud:latest
+    init: confluentinc/confluent-init-container:3.1.0
+  streamingDomains:
+    - name: cc-primary
+      type: kafka
+      kafkaCluster:
+        name: cc-primary-cluster
+        bootstrapServers:
+          - id: CC_PRIMARY
+            endpoint: pkc-oxqxx9.us-east-1.aws.confluent.cloud:9092
+            tls:
+              secretRef: cc-primary-tls
+        nodeIdRanges:
+          - name: default
+            start: 0
+            end: 30
+    - name: cc-dr
+      type: kafka
+      kafkaCluster:
+        name: cc-dr-cluster
+        bootstrapServers:
+          - id: CC_DR
+            endpoint: pkc-rv12pk.us-west-2.aws.confluent.cloud:9092
+            tls:
+              secretRef: cc-dr-tls
+        nodeIdRanges:
+          - name: default
+            start: 0
+            end: 30
+  routes:
+    - name: switchover-route
+      endpoint: "kafka.cc.axa.com:9092"
+      brokerIdentificationStrategy:
+        type: port
+      streamingDomain:
+        name: cc-primary
+        bootstrapServerId: CC_PRIMARY
+      security:
+        auth: passthrough
+        client:
+          tls:
+            secretRef: gateway-tls
+  externalAccess:
+    type: loadBalancer
+    loadBalancer:
+      domain: kafka.cc.axa.com
