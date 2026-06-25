@@ -3,7 +3,7 @@
 Complete Confluent Cloud Gateway deployment on AWS with Standard (Primary) and Dedicated (DR) clusters, cluster linking, and automated failover capabilities.
 
 ## Architecture Diagram
-<img width="1540" height="870" alt="image (2)" src="https://github.com/user-attachments/assets/f0721e47-cf64-4e8d-aced-060d30f414f2" />
+<img width="1513" height="542" alt="image" src="https://github.com/user-attachments/assets/7fd393e5-ec9f-4f51-8d88-04a85fa249f9" />
 
 ---
 
